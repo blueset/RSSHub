@@ -1,57 +1,56 @@
-import { Route, ViewType } from '@/types';
+import type { Context } from 'hono';
+
 import { config } from '@/config';
 import ConfigNotFoundError from '@/errors/types/config-not-found';
+import InvalidParameterError from '@/errors/types/invalid-parameter';
+import type { Data, Route } from '@/types';
+import { ViewType } from '@/types';
+
 import { searchNSFWNovels } from './novel-api/search/nsfw';
+
+async function handler(ctx: Context): Promise<Data> {
+    if (!config.pixiv.refreshToken) {
+        throw new ConfigNotFoundError('PIXIV_REFRESHTOKEN is required for Pixiv novel search.');
+    }
+
+    const keyword = ctx.req.param('keyword');
+    if (!keyword) {
+        throw new InvalidParameterError('A search keyword is required.');
+    }
+    return await searchNSFWNovels(keyword, ctx.req.param('match') || 'partial_match_for_tags', ctx.req.param('mode'));
+}
 
 export const route: Route = {
     path: '/search-novel/:keyword/:match?/:mode?',
     categories: ['social-media'],
     view: ViewType.Articles,
-    example: '/pixiv-novel/search-novel/Nezuko/exact_match_for_tags',
+    example: '/pixiv/search-novel/Nezuko/exact_match_for_tags',
     parameters: {
-        keyword: 'keyword',
+        keyword: 'Search keyword',
         match: {
-            description: 'keyword match mode',
+            description: 'Keyword match mode',
             default: 'partial_match_for_tags',
             options: [
-                {
-                    label: 'partial match for tags',
-                    value: 'partial_match_for_tags',
-                },
-                {
-                    label: 'exact match for tags',
-                    value: 'exact_match_for_tags',
-                },
-                {
-                    label: 'title and caption',
-                    value: 'title_and_caption',
-                },
+                { label: 'Partial match for tags', value: 'partial_match_for_tags' },
+                { label: 'Exact match for tags', value: 'exact_match_for_tags' },
+                { label: 'Title and caption', value: 'title_and_caption' },
             ],
         },
         mode: {
-            description: 'filte R18 content',
+            description: 'Filter restricted content',
             default: 'no',
             options: [
-                {
-                    label: 'only not R18',
-                    value: 'safe',
-                },
-                {
-                    label: 'only R18',
-                    value: 'r18',
-                },
-                {
-                    label: 'no filter',
-                    value: 'no',
-                },
+                { label: 'Only unrestricted', value: 'safe' },
+                { label: 'Only restricted', value: 'r18' },
+                { label: 'No filter', value: 'no' },
             ],
         },
     },
     radar: [
         {
             title: 'Tag Novels',
-            source: ['www.pixiv.net/tags/:id/novels', 'www.pixiv.net/tags/:id', 'www.pixiv.net/en/tags/:id/novels', 'www.pixiv.net/en/tags/:id'],
-            target: '/user/novels/:id/exact_match_for_tags',
+            source: ['www.pixiv.net/tags/:keyword/novels', 'www.pixiv.net/tags/:keyword', 'www.pixiv.net/en/tags/:keyword/novels', 'www.pixiv.net/en/tags/:keyword'],
+            target: '/search-novel/:keyword/exact_match_for_tags',
         },
     ],
     features: {
@@ -59,10 +58,7 @@ export const route: Route = {
             {
                 name: 'PIXIV_REFRESHTOKEN',
                 optional: false,
-                description: `
-Pixiv 登錄後的 refresh_token
-refresh_token after Pixiv login
-[https://docs.rsshub.app/deploy/config#pixiv](https://docs.rsshub.app/deploy/config#pixiv)`,
+                description: 'Pixiv login refresh token. See https://docs.rsshub.app/deploy/config#pixiv.',
             },
         ],
         requirePuppeteer: false,
@@ -70,21 +66,10 @@ refresh_token after Pixiv login
         supportBT: false,
         supportPodcast: false,
         supportScihub: false,
+        nsfw: true,
     },
-    name: 'Keyword',
+    name: 'Novel Keyword Search',
     maintainers: ['blueset'],
     handler,
+    description: 'Search Pixiv novels by tags or title and caption. Includes novel text and requires a Pixiv refresh token.',
 };
-
-async function handler(ctx) {
-    if (!config.pixiv || !config.pixiv.refreshToken) {
-        throw new ConfigNotFoundError('pixiv RSS is disabled due to the lack of <a href="https://docs.rsshub.app/deploy/config#route-specific-configurations">relevant config</a>');
-    }
-
-    const keyword = ctx.req.param('keyword');
-    const match = ctx.req.param('match') || 'partial_match_for_tags';
-    const mode = ctx.req.param('mode');
-    const { limit } = ctx.req.query();
-
-    return await searchNSFWNovels(keyword, match, mode, limit);
-}

@@ -1,8 +1,9 @@
-import ofetch from '@/utils/ofetch';
 import { load } from 'cheerio';
-import cache from '@/utils/cache';
-import { DataItem, Route } from '@/types';
 import pMap from 'p-map';
+
+import type { DataItem, Route } from '@/types';
+import cache from '@/utils/cache';
+import ofetch from '@/utils/ofetch';
 
 export const route: Route = {
     path: '/news',
@@ -15,7 +16,7 @@ export const route: Route = {
         },
     ],
     name: 'News',
-    maintainers: ['etShaw-zh'],
+    maintainers: ['etShaw-zh', 'goestav'],
     handler,
     url: 'www.anthropic.com/news',
 };
@@ -24,20 +25,20 @@ async function handler(ctx) {
     const link = 'https://www.anthropic.com/news';
     const response = await ofetch(link);
     const $ = load(response);
-    const limit = ctx.req.query('limit') ? Number.parseInt(ctx.req.query('limit'), 10) : 20;
+    const limit = ctx.req.query('limit') ? Number(ctx.req.query('limit')) : 10;
 
-    const list: DataItem[] = $('.contentFadeUp a')
+    const list: DataItem[] = $('[class^="PublicationList-module-scss-module__"][class$="__list"] a')
         .toArray()
         .slice(0, limit)
         .map((el) => {
             const $el = $(el);
-            const title = $el.find('h3').text().trim();
+            const title = $el.find('[class*="__title"]').text().trim();
             const href = $el.attr('href') ?? '';
-            const pubDate = $el.find('p.detail-m.agate').text().trim() || $el.find('div[class^="PostList_post-date__"]').text().trim(); // legacy selector used roughly before Jan 2025
-            const fullLink = href.startsWith('http') ? href : `https://www.anthropic.com${href}`;
+            const pubDate = $el.find('time').text().trim();
+            const link = href.startsWith('http') ? href : `https://www.anthropic.com${href}`;
             return {
                 title,
-                link: fullLink,
+                link,
                 pubDate,
             };
         });
@@ -49,9 +50,10 @@ async function handler(ctx) {
                 const response = await ofetch(item.link!);
                 const $ = load(response);
 
-                $('div[class^="PostDetail_b-social-share"]').remove();
+                const content = $('#main-content');
 
-                const content = $('div[class*="PostDetail_post-detail__"]');
+                $('[class$="__header"], [class$="__socialShare"], [class*="__carousel-controls"], [class^="LandingPageSection-module-scss-module__"]').remove();
+
                 content.find('img').each((_, e) => {
                     const $e = $(e);
                     $e.removeAttr('style srcset');
@@ -63,7 +65,7 @@ async function handler(ctx) {
                     }
                 });
 
-                item.description = content.html() ?? undefined;
+                item.description = content.html();
 
                 return item;
             }),
